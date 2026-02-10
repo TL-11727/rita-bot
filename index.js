@@ -1,3 +1,11 @@
+const http = require('http');
+
+http.createServer((req, res) => {
+    res.write('Rita is running!');
+    res.end();
+}).listen(process.env.PORT || 3000);
+
+console.log("🌍 Render Portu Aktif Edildi.");
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const Groq = require("groq-sdk");
