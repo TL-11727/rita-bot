@@ -37,7 +37,7 @@ async function sesiYaziyaDok(fileUrl) {
     }
 }
 
-// 2. ANA YANIT FONKSİYONU
+// 2. ANA YANIT FONKSİYONU (GÜNCELLENDİ: Sesli Yanıt Eklendi)
 async function ritaYanitla(ctx, userId, mesaj) {
     if (!hafiza[userId]) {
         hafiza[userId] = [{ 
@@ -56,9 +56,29 @@ async function ritaYanitla(ctx, userId, mesaj) {
         const cevap = completion.choices[0].message.content;
         hafiza[userId].push({ role: "assistant", content: cevap });
 
-        // Yazılı mesajı gönder
+        // A. Önce yazılı mesajı gönder
         await ctx.reply(cevap);
-        console.log("✅ Mesaj gönderildi!");
+
+        // B. Şimdi cevabı sese dönüştür ve gönder (Ücretsiz gTTS)
+        const gTTS = require('gtts');
+        const fs = require('fs');
+        const path = require('path');
+        const sesDosyasiPath = path.join(__dirname, `rita_ses_${userId}.mp3`);
+        
+        const gtts = new gTTS(cevap, 'en'); // Dil: İngilizce
+        
+        gtts.save(sesDosyasiPath, async function (err) {
+            if (err) {
+                console.error("❌ Ses oluşturma hatası:", err);
+            } else {
+                await ctx.replyWithVoice({ source: sesDosyasiPath });
+                // Gönderdikten sonra geçici dosyayı temizle
+                if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
+                console.log("✅ Sesli mesaj gönderildi!");
+            }
+        });
+
+        console.log("✅ İşlem tamamlandı!");
 
     } catch (error) {
         console.error("❌ Yanıt Hatası:", error.message);
