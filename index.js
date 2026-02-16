@@ -17,7 +17,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 // Render Port Dinleyici (Cron-job buraya tıklar)
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.write('Rita is running with Cloud Brain!');
+    res.write('Rita is Online!');
     res.end();
 }).listen(process.env.PORT || 3000);
 
