@@ -1,25 +1,28 @@
 const http = require('http');
-
-http.createServer((req, res) => {
-    res.write('Rita is running!');
-    res.end();
-}).listen(process.env.PORT || 3000);
-
-console.log("🌍 Render Portu Aktif Edildi.");
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const Groq = require("groq-sdk");
 const axios = require('axios');
 const FormData = require('form-data');
+const { createClient } = require('@supabase/supabase-js');
+const gTTS = require('gtts');
+const fs = require('fs');
+const path = require('path');
 
+// 1. KURULUMLAR
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-const hafiza = {};
+// Render Port Dinleyici
+http.createServer((req, res) => {
+    res.write('Rita is running with Cloud Brain!');
+    res.end();
+}).listen(process.env.PORT || 3000);
 
-console.log("🚀 Rita: Sistem Başlatıldı. Yazılı Mod Aktif!");
+console.log("🌍 Render Portu ve Supabase Bağlantısı Aktif.");
 
-// 1. SESİ YAZIYA ÇEVİRME (GROQ)
+// 2. SESİ YAZIYA ÇEVİRME (GROQ)
 async function sesiYaziyaDok(fileUrl) {
     try {
         const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
@@ -37,65 +40,67 @@ async function sesiYaziyaDok(fileUrl) {
     }
 }
 
-// 2. ANA YANIT FONKSİYONU (GÜNCELLENDİ: Sesli Yanıt Eklendi)
+// 3. ANA YANIT VE BULUT HAFIZA FONKSİYONU
 async function ritaYanitla(ctx, userId, mesaj) {
-    if (!hafiza[userId]) {
-        hafiza[userId] = [{ 
-            role: "system", 
-            content: "Sen Rita, elit bir Dil Koçusun. Kullanıcıya ismiyle (Rita/Ai) hitap et ve her mesajda bir challenge ver." 
-        }];
-    }
-    hafiza[userId].push({ role: "user", content: mesaj });
-
     try {
+        // Supabase'den hafızayı çek
+        let { data: kayit } = await supabase
+            .from('hafiza')
+            .select('messages')
+            .eq('user_id', userId.toString())
+            .maybeSingle(); // .single() yerine .maybeSingle() hata almanı engeller
+        
+        let history = kayit ? kayit.messages : [
+            { role: "system", content: "Sen Rita, elit bir Dil Koçusun. Kullanıcının ismi M, seviyesi A2. Bir sonraki ders LocalStorage. Her mesajda bir challenge ver." }
+        ];
+
+        history.push({ role: "user", content: mesaj });
+
+        // Groq'tan yanıt al
         const completion = await groq.chat.completions.create({
-            messages: hafiza[userId],
+            messages: history,
             model: "llama-3.3-70b-versatile",
         });
 
         const cevap = completion.choices[0].message.content;
-        hafiza[userId].push({ role: "assistant", content: cevap });
+        history.push({ role: "assistant", content: cevap });
 
-        // A. Önce yazılı mesajı gönder
+        // Hafızayı Supabase'de güncelle
+        await supabase.from('hafiza').upsert({ 
+            user_id: userId.toString(), 
+            messages: history 
+        }, { onConflict: 'user_id' });
+
+        // A. Yazılı mesajı gönder
         await ctx.reply(cevap);
 
-        // B. Şimdi cevabı sese dönüştür ve gönder (Ücretsiz gTTS)
-        const gTTS = require('gtts');
-        const fs = require('fs');
-        const path = require('path');
+        // B. Sesli mesajı oluştur ve gönder
         const sesDosyasiPath = path.join(__dirname, `rita_ses_${userId}.mp3`);
-        
-        const gtts = new gTTS(cevap, 'en'); // Dil: İngilizce
+        const gtts = new gTTS(cevap, 'en');
         
         gtts.save(sesDosyasiPath, async function (err) {
-            if (err) {
-                console.error("❌ Ses oluşturma hatası:", err);
-            } else {
+            if (!err) {
                 await ctx.replyWithVoice({ source: sesDosyasiPath });
-                // Gönderdikten sonra geçici dosyayı temizle
                 if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
-                console.log("✅ Sesli mesaj gönderildi!");
+                console.log("✅ Sesli mesaj gönderildi ve hafıza güncellendi!");
             }
         });
 
-        console.log("✅ İşlem tamamlandı!");
-
     } catch (error) {
-        console.error("❌ Yanıt Hatası:", error.message);
+        console.error("❌ Bir hata oluştu:", error.message);
     }
 }
 
-// 3. TELEGRAM DİNLEYİCİLERİ
+// 4. TELEGRAM DİNLEYİCİLERİ
 bot.on('voice', async (ctx) => {
     try {
         await ctx.reply("Seni dinliyorum... 🎧");
         const fileId = ctx.message.voice.file_id;
         const link = await ctx.telegram.getFileLink(fileId);
         const metin = await sesiYaziyaDok(link.href);
-        console.log(`🎤 Duyduğum: ${metin}`);
         await ritaYanitla(ctx, ctx.from.id, metin);
     } catch (e) {
-        ctx.reply("Sesini işleyemedim, lütfen tekrar dener misin?");
+        ctx.reply("Sesini işleyemedim, tekrar dener misin?");
     }
 });
 
