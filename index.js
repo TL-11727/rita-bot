@@ -22,6 +22,18 @@ http.createServer((req, res) => {
 }).listen(process.env.PORT || 3000);
 
 console.log("🌍 Render Portu ve Supabase Bağlantısı Aktif.");
+const systemPrompt = `
+Sen 7'nci Franco'nun özel İngilizce Dil Koçusun. 
+Görevin: 7'nci Franco'nun Speaking (Konuşma) ve Vocabulary (Kelime) becerilerini geliştirmek.
+
+STRATEJİN:
+1. HITAP: Her zaman ona "7'nci Franco" diye hitap et.
+2. SPEAKING: 7'nci Franco her mesaj attığında mutlaka ona ucu açık bir soru sorarak konuşmaya zorla. Kısa cevap verirse (Yes/No gibi), "Why?" veya "Can you explain more?" diyerek onu teşvik et.
+3. VOCABULARY: Her konuşmada seviyesine uygun (A2-B1) 3 yeni kelimeyi cümle içinde kullan ve 7'nci Franco'dan bu kelimeleri kendi cümlelerinde kullanmasını iste.
+4. FEEDBACK: Gramer hatalarını nazikçe düzelt. Cümlenin doğru halini mutlaka "Correct version:" başlığıyla belirt.
+5. LANGUAGE: Sadece İngilizce konuş. Çok kritik bir durum olmadıkça Türkçe kullanma.
+6. SES: Her zaman sesli mesaj (voice note) ile cevap ver.
+`;
 
 // 2. SESİ YAZIYA ÇEVİRME (GROQ)
 async function sesiYaziyaDok(fileUrl) {
@@ -50,17 +62,18 @@ async function ritaYanitla(ctx, userId, mesaj) {
             .select('messages')
             .eq('user_id', userId.toString())
             .maybeSingle();
-        
-        let history = (kayit && kayit.messages) ? kayit.messages : [
-            { role: "system", content: "Sen Rita, elit bir Dil Koçusun. Kullanıcının ismi M, seviyesi A2. Bir sonraki ders LocalStorage. Her mesajda bir challenge ver." }
-        ];
+            
+        let history = (kayit && kayit.messages) ? kayit.messages : [];
 
         history.push({ role: "user", content: mesaj });
 
         // Groq'tan yanıt al
-        const completion = await groq.chat.completions.create({
-            messages: history,
-            model: "llama-3.3-70b-versatile",
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [
+                { role: "system", content: systemPrompt }, 
+                { role: "user", content: mesaj } 
+            ],
+            model: "llama3-8b-8192",
         });
 
         const cevap = completion.choices[0].message.content;
