@@ -1,4 +1,4 @@
-const http = require('http');
+ const http = require('http');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const Groq = require("groq-sdk");
@@ -14,8 +14,9 @@ const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-// Render Port Dinleyici
+// Render Port Dinleyici (Cron-job buraya tıklar)
 http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.write('Rita is running with Cloud Brain!');
     res.end();
 }).listen(process.env.PORT || 3000);
@@ -48,9 +49,9 @@ async function ritaYanitla(ctx, userId, mesaj) {
             .from('hafiza')
             .select('messages')
             .eq('user_id', userId.toString())
-            .maybeSingle(); // .single() yerine .maybeSingle() hata almanı engeller
+            .maybeSingle();
         
-        let history = kayit ? kayit.messages : [
+        let history = (kayit && kayit.messages) ? kayit.messages : [
             { role: "system", content: "Sen Rita, elit bir Dil Koçusun. Kullanıcının ismi M, seviyesi A2. Bir sonraki ders LocalStorage. Her mesajda bir challenge ver." }
         ];
 
@@ -80,30 +81,50 @@ async function ritaYanitla(ctx, userId, mesaj) {
         
         gtts.save(sesDosyasiPath, async function (err) {
             if (!err) {
-                await ctx.replyWithVoice({ source: sesDosyasiPath });
-                if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
-                console.log("✅ Sesli mesaj gönderildi ve hafıza güncellendi!");
+                // Ses dosyası gönderilirken bir hata oluşursa botun çökmemesi için try-catch
+                try {
+                    await ctx.replyWithVoice({ source: sesDosyasiPath });
+                    if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
+                } catch (vError) {
+                    console.error("Ses gönderme hatası:", vError.message);
+                }
             }
         });
 
     } catch (error) {
-        console.error("❌ Bir hata oluştu:", error.message);
+        console.error("❌ Rita Yanıt Hatası:", error.message);
+        ctx.reply("I'm having a little trouble thinking right now. Can you try again?");
     }
 }
 
 // 4. TELEGRAM DİNLEYİCİLERİ
 bot.on('voice', async (ctx) => {
     try {
-        await ctx.reply("Seni dinliyorum... 🎧");
+        await ctx.reply("I'm listening to you... 🎧");
         const fileId = ctx.message.voice.file_id;
         const link = await ctx.telegram.getFileLink(fileId);
         const metin = await sesiYaziyaDok(link.href);
+        console.log(`🎤 Duyulan: ${metin}`);
         await ritaYanitla(ctx, ctx.from.id, metin);
     } catch (e) {
-        ctx.reply("Sesini işleyemedim, tekrar dener misin?");
+        console.error("Ses işleme hatası:", e.message);
+        ctx.reply("I couldn't process your voice. Could you try speaking again?");
     }
 });
 
 bot.on('text', (ctx) => ritaYanitla(ctx, ctx.from.id, ctx.message.text));
 
-bot.launch();
+// 5. GÜVENLİ BAŞLATMA VE HATA YAKALAMA
+bot.catch((err, ctx) => {
+    console.error(`Ouch! Rita encountered an error for ${ctx.updateType}`, err);
+});
+
+bot.launch().then(() => {
+    console.log("🚀 Rita: Telegram Botu Başarıyla Başlatıldı!");
+}).catch((err) => {
+    console.error("❌ Bot başlatılamadı:", err.message);
+});
+
+// Render'da düzgün kapanma için
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
