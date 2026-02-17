@@ -132,10 +132,10 @@ bot.catch((err, ctx) => {
     console.error(`Ouch! Rita encountered an error for ${ctx.updateType}`, err);
 });
 
-bot.launch().then(() => {
-    console.log("🚀 Rita: Telegram Botu Başarıyla Başlatıldı!");
-}).catch((err) => {
-    console.error("❌ Bot başlatılamadı:", err.message);
+bot.launch({
+  dropPendingUpdates: true // Kuyrukta bekleyen eski mesajları ve takılı kalan bağlantıları siler
+}).then(() => {
+  console.log("🚀 Rita Telegram'a taptaze bir bağlantıyla bağlandı!");
 });
 
 // Render'da düzgün kapanma için
