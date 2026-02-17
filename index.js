@@ -87,16 +87,34 @@ async function ritaYanitla(ctx, userId, mesaj) {
             if (modelId === models[models.length - 1]) throw err; // Son model de bittiyse hata ver
         }
     }
-        const cevap = chatCompletion.choices[0].message.content;
+       const cevap = chatCompletion.choices[0].message.content;
         history.push({ role: "assistant", content: cevap });
 
+        // --- YETKİNLİK: KALICI HAFIZA BAŞLANGICI ---
+        // Rita'nın cevabından kelime ve anlamını ayıklayıp kütüphaneye yazar
+        const kelimeMatch = cevap.match(/Kelime:\s*([a-zA-Z]+)/i);
+        const anlamMatch = cevap.match(/Anlamı:\s*([^\n\.]+)/i);
+
+        if (kelimeMatch && anlamMatch) {
+            const word = kelimeMatch[1].trim();
+            const mean = anlamMatch[1].trim();
+
+            await supabase.from('rita_sozluk').insert({
+                user_id: userId.toString(),
+                word: word,
+                mean: mean
+            });
+            console.log(`🚀 Kelime hafızaya kazındı: ${word}`);
+        }
+        // --- YETKİNLİK SONU ---
+
         // Hafızayı Supabase'de güncelle
-        await supabase.from('hafiza').upsert({ 
-            user_id: userId.toString(), 
-            messages: history 
+        await supabase.from('hafiza').upsert({
+            user_id: userId.toString(),
+            messages: history
         }, { onConflict: 'user_id' });
 
-        // A. Yazılı mesajı gönder
+        // Telegram'a yanıt gönder
         await ctx.reply(cevap);
 
         // B. Sesli mesajı oluştur ve gönder
