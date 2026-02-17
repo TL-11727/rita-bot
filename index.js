@@ -1,4 +1,4 @@
- const http = require('http');
+const http = require('http');
 require('dotenv').config();
 const { Telegraf } = require('telegraf');
 const Groq = require("groq-sdk");
@@ -15,9 +15,10 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // Render Port Dinleyici (Cron-job buraya tıklar)
+const http = require('http');
 http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('OK'); // En kısa ve temiz yanıt
+    res.writeHead(200); // Sadece 200 OK kodu gönder
+    res.end();         // Hiçbir metin gönderme (Çıkış 0 bayt olsun)
 }).listen(process.env.PORT || 3000);
 
 console.log("🌍 Render Portu ve Supabase Bağlantısı Aktif.");
