@@ -17,8 +17,7 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 // Render Port Dinleyici (Cron-job buraya tıklar)
 http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.write('Rita is Online!');
-    res.end();
+    res.end('OK'); // En kısa ve temiz yanıt
 }).listen(process.env.PORT || 3000);
 
 console.log("🌍 Render Portu ve Supabase Bağlantısı Aktif.");
