@@ -15,7 +15,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 // Render Port Dinleyici (Cron-job buraya tıklar)
-const http = require('http');
+
 http.createServer((req, res) => {
     res.writeHead(200); // Sadece 200 OK kodu gönder
     res.end();         // Hiçbir metin gönderme (Çıkış 0 bayt olsun)
@@ -76,7 +76,7 @@ async function ritaYanitla(ctx, userId, mesaj) {
             model: "llama3-70b-8192",
         });
 
-        const cevap = completion.choices[0].message.content;
+        const cevap = chatCompletion.choices[0].message.content;
         history.push({ role: "assistant", content: cevap });
 
         // Hafızayı Supabase'de güncelle
