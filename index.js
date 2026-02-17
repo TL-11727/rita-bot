@@ -91,9 +91,8 @@ async function ritaYanitla(ctx, userId, mesaj) {
         history.push({ role: "assistant", content: cevap });
 
         // --- YETKİNLİK: KALICI HAFIZA BAŞLANGICI ---
-        // Rita'nın cevabından kelime ve anlamını ayıklayıp kütüphaneye yazar
-        const kelimeMatch = cevap.match(/Kelime:\s*([a-zA-Z]+)/i);
-        const anlamMatch = cevap.match(/Anlamı:\s*([^\n\.]+)/i);
+        const kelimeMatch = cevap.match(/Kelime:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ]+)/i);
+        const anlamMatch = cevap.match(/Anlamı:\s*([^.\n]+)/i);
 
         if (kelimeMatch && anlamMatch) {
             const word = kelimeMatch[1].trim();
