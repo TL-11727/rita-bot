@@ -66,16 +66,27 @@ async function ritaYanitla(ctx, userId, mesaj) {
         let history = (kayit && kayit.messages) ? kayit.messages : [];
 
         history.push({ role: "user", content: mesaj });
+        
+        // Groq'tan yanıt al (Hata Toleranslı Sistem)
+    const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"];
+    let chatCompletion;
 
-        // Groq'tan yanıt al
-        const chatCompletion = await groq.chat.completions.create({
-            messages: [
-                { role: "system", content: systemPrompt }, 
-                { role: "user", content: mesaj } 
-            ],
-            model: "llama3-70b-8192",
-        });
-
+    for (const modelId of models) {
+        try {
+            chatCompletion = await groq.chat.completions.create({
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: mesaj }
+                ],
+                model: modelId,
+            });
+            console.log(`✅ Mesaj ${modelId} ile başarıyla üretildi.`);
+            break; // Başarılı olursa döngüden çık
+        } catch (err) {
+            console.error(`⚠️ ${modelId} hatası, yedeğe geçiliyor...`);
+            if (modelId === models[models.length - 1]) throw err; // Son model de bittiyse hata ver
+        }
+    }
         const cevap = chatCompletion.choices[0].message.content;
         history.push({ role: "assistant", content: cevap });
 
