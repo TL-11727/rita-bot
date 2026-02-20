@@ -5,7 +5,7 @@ const Groq = require("groq-sdk");
 const axios = require('axios');
 const FormData = require('form-data');
 const { createClient } = require('@supabase/supabase-js');
-const gTTS = require('gtts');
+const { MsEdgeTTS } = require('edge-tts'); // Daha insansı ses için eklendi
 const fs = require('fs');
 const path = require('path');
 
@@ -13,26 +13,27 @@ const path = require('path');
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-
-// Render Port Dinleyici (Cron-job buraya tıklar)
+const tts = new MsEdgeTTS(); // Edge TTS başlatıldı
 
 http.createServer((req, res) => {
-    res.writeHead(200); // Sadece 200 OK kodu gönder
-    res.end();         // Hiçbir metin gönderme (Çıkış 0 bayt olsun)
+    res.writeHead(200);
+    res.end();
 }).listen(process.env.PORT || 3000);
 
-console.log("🌍 Render Portu ve Supabase Bağlantısı Aktif.");
+console.log("🌍 Rita Bulut Sunucusu ve Veri Tabanı Aktif.");
+
+// ROBERT İÇİN ÖZEL SİSTEM MESAJI
 const systemPrompt = `
-Sen 7'nci Franco'nun özel İngilizce Dil Koçusun. 
-Görevin: 7'nci Franco'nun Speaking (Konuşma) ve Vocabulary (Kelime) becerilerini geliştirmek.
+Sen Rita, Robert'ın (eski adıyla 7'nci Franco) özel İngilizce Dil Koçusun. 
+Görevin: Robert'ın Speaking ve Vocabulary becerilerini geliştirmek.
 
 STRATEJİN:
-1. HITAP: Her zaman ona "7'nci Franco" diye hitap et.
-2. SPEAKING: 7'nci Franco her mesaj attığında mutlaka ona ucu açık bir soru sorarak konuşmaya zorla. Kısa cevap verirse (Yes/No gibi), "Why?" veya "Can you explain more?" diyerek onu teşvik et.
-3. VOCABULARY: Her konuşmada seviyesine uygun (A2-B1) 3 yeni kelimeyi cümle içinde kullan ve 7'nci Franco'dan bu kelimeleri kendi cümlelerinde kullanmasını iste.
-4. FEEDBACK: Gramer hatalarını nazikçe düzelt. Cümlenin doğru halini mutlaka "Correct version:" başlığıyla belirt.
-5. LANGUAGE: Sadece İngilizce konuş. Çok kritik bir durum olmadıkça Türkçe kullanma.
-6. SES: Her zaman sesli mesaj (voice note) ile cevap ver.
+1. HITAP: Her zaman ona "Robert" diye hitap et. Asla başka isim kullanma.
+2. SPEAKING: Robert her mesaj attığında ucu açık bir soru sorarak onu konuştur.
+3. VOCABULARY: Her mesajda mutlaka "Kelime: ... Anlamı: ..." formatında seviyesine uygun yeni bir şeyler öğret.
+4. FEEDBACK: Hatalarını "Correct version:" başlığıyla nazikçe düzelt.
+5. LANGUAGE: Sadece İngilizce konuş. Çok kritik olmadıkça Türkçe kullanma.
+6. SES: Her zaman insansı bir ses tonuyla (Voice Note) cevap ver.
 `;
 
 // 2. SESİ YAZIYA ÇEVİRME (GROQ)
@@ -48,124 +49,89 @@ async function sesiYaziyaDok(fileUrl) {
         });
         return transcription.data.text;
     } catch (error) {
-        console.error("❌ Groq Ses Hatası:", error.message);
+        console.error("❌ Ses Çözümleme Hatası:", error.message);
         throw error;
     }
 }
 
-// 3. ANA YANIT VE BULUT HAFIZA FONKSİYONU
+// 3. ANA YANIT VE SESLENDİRME FONKSİYONU
 async function ritaYanitla(ctx, userId, mesaj) {
     try {
-        // Supabase'den hafızayı çek
-        let { data: kayit } = await supabase
-            .from('hafiza')
-            .select('messages')
-            .eq('user_id', userId.toString())
-            .maybeSingle();
-            
+        let { data: kayit } = await supabase.from('hafiza').select('messages').eq('user_id', userId.toString()).maybeSingle();
         let history = (kayit && kayit.messages) ? kayit.messages : [];
-
         history.push({ role: "user", content: mesaj });
         
-        // Groq'tan yanıt al (Hata Toleranslı Sistem)
-    const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "mixtral-8x7b-32768"];
-    let chatCompletion;
+        const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
+        let chatCompletion;
 
-    for (const modelId of models) {
-        try {
-            chatCompletion = await groq.chat.completions.create({
-                messages: [
-                    { role: "system", content: systemPrompt },
-                    { role: "user", content: mesaj }
-                ],
-                model: modelId,
-            });
-            console.log(`✅ Mesaj ${modelId} ile başarıyla üretildi.`);
-            break; // Başarılı olursa döngüden çık
-        } catch (err) {
-            console.error(`⚠️ ${modelId} hatası, yedeğe geçiliyor...`);
-            if (modelId === models[models.length - 1]) throw err; // Son model de bittiyse hata ver
+        for (const modelId of models) {
+            try {
+                chatCompletion = await groq.chat.completions.create({
+                    messages: [{ role: "system", content: systemPrompt }, ...history.slice(-5), { role: "user", content: mesaj }],
+                    model: modelId,
+                });
+                break;
+            } catch (err) {
+                if (modelId === models[models.length - 1]) throw err;
+            }
         }
-    }
-       const cevap = chatCompletion.choices[0].message.content;
+
+        const cevap = chatCompletion.choices[0].message.content;
         history.push({ role: "assistant", content: cevap });
 
-        // --- YETKİNLİK: KALICI HAFIZA BAŞLANGICI ---
-        const kelimeMatch = cevap.match(/Kelime:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ]+)/i);
+        // KELİME AYIKLAMA VE HAFIZA (SUPABASE)
+        const kelimeMatch = cevap.match(/Kelime:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ\s]+)/i);
         const anlamMatch = cevap.match(/Anlamı:\s*([^.\n]+)/i);
 
         if (kelimeMatch && anlamMatch) {
-            const word = kelimeMatch[1].trim();
-            const mean = anlamMatch[1].trim();
-
             await supabase.from('rita_sozluk').insert({
                 user_id: userId.toString(),
-                word: word,
-                mean: mean
+                word: kelimeMatch[1].trim(),
+                mean: anlamMatch[1].trim()
             });
-            console.log(`🚀 Kelime hafızaya kazındı: ${word}`);
         }
-        // --- YETKİNLİK SONU ---
 
-        // Hafızayı Supabase'de güncelle
-        await supabase.from('hafiza').upsert({
-            user_id: userId.toString(),
-            messages: history
-        }, { onConflict: 'user_id' });
+        await supabase.from('hafiza').upsert({ user_id: userId.toString(), messages: history }, { onConflict: 'user_id' });
 
-        // Telegram'a yanıt gönder
+        // TEXT CEVAP
         await ctx.reply(cevap);
 
-        // B. Sesli mesajı oluştur ve gönder
-        const sesDosyasiPath = path.join(__dirname, `rita_ses_${userId}.mp3`);
-        const gtts = new gTTS(cevap, 'en');
-        
-        gtts.save(sesDosyasiPath, async function (err) {
-            if (!err) {
-                // Ses dosyası gönderilirken bir hata oluşursa botun çökmemesi için try-catch
-                try {
-                    await ctx.replyWithVoice({ source: sesDosyasiPath });
-                    if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
-                } catch (vError) {
-                    console.error("Ses gönderme hatası:", vError.message);
-                }
-            }
-        });
+        // --- İNSANSI SES OLUŞTURMA (EDGE-TTS) ---
+        const sesDosyasiPath = path.join(__dirname, `rita_voice_${userId}.mp3`);
+        try {
+            // 'en-US-GuyNeural' veya 'en-GB-SoniaNeural' gibi doğal sesler seçilebilir
+            await tts.setMetadata('en-US-AvaNeural', 'audio-24khz-48kbitrate-mono-mp3');
+            const filePath = await tts.toFile(sesDosyasiPath, cevap);
+            
+            await ctx.replyWithVoice({ source: sesDosyasiPath });
+            if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
+        } catch (ttsErr) {
+            console.error("TTS Hatası:", ttsErr.message);
+        }
 
     } catch (error) {
-        console.error("❌ Rita Yanıt Hatası:", error.message);
-        ctx.reply("I'm having a little trouble thinking right now. Can you try again?");
+        console.error("❌ Hata:", error.message);
+        ctx.reply("I had a small glitch, Robert. Can you say that again?");
     }
 }
 
-// 4. TELEGRAM DİNLEYİCİLERİ
+// 4. DİNLEYİCİLER
 bot.on('voice', async (ctx) => {
     try {
-        await ctx.reply("I'm listening to you... 🎧");
         const fileId = ctx.message.voice.file_id;
         const link = await ctx.telegram.getFileLink(fileId);
         const metin = await sesiYaziyaDok(link.href);
-        console.log(`🎤 Duyulan: ${metin}`);
         await ritaYanitla(ctx, ctx.from.id, metin);
     } catch (e) {
-        console.error("Ses işleme hatası:", e.message);
-        ctx.reply("I couldn't process your voice. Could you try speaking again?");
+        ctx.reply("I couldn't hear you clearly, Robert.");
     }
 });
 
 bot.on('text', (ctx) => ritaYanitla(ctx, ctx.from.id, ctx.message.text));
 
-// 5. GÜVENLİ BAŞLATMA VE HATA YAKALAMA
-bot.catch((err, ctx) => {
-    console.error(`Ouch! Rita encountered an error for ${ctx.updateType}`, err);
+bot.launch({ dropPendingUpdates: true }).then(() => {
+    console.log("🚀 Rita (Robert'ın Koçu) Yayında!");
 });
 
-bot.launch({
-  dropPendingUpdates: true // Kuyrukta bekleyen eski mesajları ve takılı kalan bağlantıları siler
-}).then(() => {
-  console.log("🚀 Rita Telegram'a taptaze bir bağlantıyla bağlandı!");
-});
-
-// Render'da düzgün kapanma için
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
