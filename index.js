@@ -5,7 +5,7 @@ const Groq = require("groq-sdk");
 const axios = require('axios');
 const FormData = require('form-data');
 const { createClient } = require('@supabase/supabase-js');
-const { MsEdgeTTS } = require('edge-tts'); // Daha insansı ses için eklendi
+const { EdgeTTS } = require('edge-tts-node'); // Hata vermeyen, Node dostu kütüphane
 const fs = require('fs');
 const path = require('path');
 
@@ -13,8 +13,8 @@ const path = require('path');
 const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-const tts = new MsEdgeTTS(); // Edge TTS başlatıldı
 
+// Render Port Dinleyici
 http.createServer((req, res) => {
     res.writeHead(200);
     res.end();
@@ -24,16 +24,16 @@ console.log("🌍 Rita Bulut Sunucusu ve Veri Tabanı Aktif.");
 
 // ROBERT İÇİN ÖZEL SİSTEM MESAJI
 const systemPrompt = `
-Sen Rita, Robert'ın (eski adıyla 7'nci Franco) özel İngilizce Dil Koçusun. 
+Sen Rita, Robert'ın özel İngilizce Dil Koçusun. 
 Görevin: Robert'ın Speaking ve Vocabulary becerilerini geliştirmek.
 
 STRATEJİN:
-1. HITAP: Her zaman ona "Robert" diye hitap et. Asla başka isim kullanma.
+1. HITAP: Her zaman ona "Robert" diye hitap et. 
 2. SPEAKING: Robert her mesaj attığında ucu açık bir soru sorarak onu konuştur.
-3. VOCABULARY: Her mesajda mutlaka "Kelime: ... Anlamı: ..." formatında seviyesine uygun yeni bir şeyler öğret.
-4. FEEDBACK: Hatalarını "Correct version:" başlığıyla nazikçe düzelt.
+3. VOCABULARY: Her mesajda mutlaka "Kelime: ... Anlamı: ..." formatında yeni kelimeler öğret.
+4. FEEDBACK: Gramer hatalarını "Correct version:" başlığıyla düzelt.
 5. LANGUAGE: Sadece İngilizce konuş. Çok kritik olmadıkça Türkçe kullanma.
-6. SES: Her zaman insansı bir ses tonuyla (Voice Note) cevap ver.
+6. SES: Her zaman insansı bir ses tonuyla cevap ver.
 `;
 
 // 2. SESİ YAZIYA ÇEVİRME (GROQ)
@@ -93,15 +93,15 @@ async function ritaYanitla(ctx, userId, mesaj) {
 
         await supabase.from('hafiza').upsert({ user_id: userId.toString(), messages: history }, { onConflict: 'user_id' });
 
-        // TEXT CEVAP
+        // Önce Yazılı Cevap
         await ctx.reply(cevap);
 
-        // --- İNSANSI SES OLUŞTURMA (EDGE-TTS) ---
+        // --- İNSANSI SES OLUŞTURMA (EDGE-TTS-NODE) ---
         const sesDosyasiPath = path.join(__dirname, `rita_voice_${userId}.mp3`);
         try {
-            // 'en-US-GuyNeural' veya 'en-GB-SoniaNeural' gibi doğal sesler seçilebilir
-            await tts.setMetadata('en-US-AvaNeural', 'audio-24khz-48kbitrate-mono-mp3');
-            const filePath = await tts.toFile(sesDosyasiPath, cevap);
+            const tts = new EdgeTTS();
+            // AvaNeural sesi çok gerçekçidir
+            await tts.ttsPromise(cevap, sesDosyasiPath, { voice: 'en-US-AvaNeural' });
             
             await ctx.replyWithVoice({ source: sesDosyasiPath });
             if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
@@ -111,7 +111,7 @@ async function ritaYanitla(ctx, userId, mesaj) {
 
     } catch (error) {
         console.error("❌ Hata:", error.message);
-        ctx.reply("I had a small glitch, Robert. Can you say that again?");
+        ctx.reply("I had a small glitch, Robert. Can you try again?");
     }
 }
 
@@ -130,7 +130,7 @@ bot.on('voice', async (ctx) => {
 bot.on('text', (ctx) => ritaYanitla(ctx, ctx.from.id, ctx.message.text));
 
 bot.launch({ dropPendingUpdates: true }).then(() => {
-    console.log("🚀 Rita (Robert'ın Koçu) Yayında!");
+    console.log("🚀 Rita (Robert'ın Koçu) Sesli ve Canlı!");
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));

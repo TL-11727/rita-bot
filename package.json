@@ -15,7 +15,7 @@
     "@supabase/supabase-js": "^2.95.3",
     "axios": "^1.13.5",
     "dotenv": "^17.2.4",
-    "edge-tts": "^1.0.1",
+    "edge-tts-node": "^1.5.7",
     "express": "^5.2.1",
     "form-data": "^4.0.5",
     "groq-sdk": "^0.37.0",
