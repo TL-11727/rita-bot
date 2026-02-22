@@ -5,7 +5,7 @@ const Groq = require("groq-sdk");
 const axios = require('axios');
 const FormData = require('form-data');
 const { createClient } = require('@supabase/supabase-js');
-const { EdgeTTS } = require('edge-tts-node');
+const EdgeTTS = require('edge-tts-node').EdgeTTS;
 const fs = require('fs');
 const path = require('path');
 
