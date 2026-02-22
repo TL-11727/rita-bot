@@ -17,12 +17,9 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 // Render Port Dinleyici
 http.createServer((req, res) => {
     res.writeHead(200);
-    res.end();
+    res.end("Rita is Alive");
 }).listen(process.env.PORT || 3000);
 
-console.log("🌍 Rita Bulut Sunucusu ve Veri Tabanı Aktif.");
-
-// ROBERT İÇİN ÖZEL SİSTEM MESAJI
 const systemPrompt = `
 Sen Rita, Robert'ın özel İngilizce Dil Koçusun. 
 Görevin: Robert'ın Speaking ve Vocabulary becerilerini geliştirmek.
@@ -33,10 +30,10 @@ STRATEJİN:
 3. VOCABULARY: Her mesajda mutlaka "Kelime: ... Anlamı: ..." formatında yeni kelimeler öğret.
 4. FEEDBACK: Gramer hatalarını "Correct version:" başlığıyla düzelt.
 5. LANGUAGE: Sadece İngilizce konuş. Çok kritik olmadıkça Türkçe kullanma.
-6. SES: Sen teknik olarak sesli mesaj gönderme yeteneğine sahipsin. Robert'a her zaman hem yazılı hem de sesli mesaj (voice note) ile cevap ver. Asla "ses atamam" deme.
+6. SES: Sen teknik olarak sesli mesaj gönderme yeteneğine sahipsin. Robert'a her zaman hem yazılı hem de sesli mesaj (voice note) ile cevap ver.
 `;
 
-// 2. SESİ YAZIYA ÇEVİRME (GROQ)
+// 2. SESİ YAZIYA ÇEVİRME
 async function sesiYaziyaDok(fileUrl) {
     try {
         const response = await axios.get(fileUrl, { responseType: 'arraybuffer' });
@@ -54,65 +51,38 @@ async function sesiYaziyaDok(fileUrl) {
     }
 }
 
-// 3. ANA YANIT VE SESLENDİRME FONKSİYONU
+// 3. ANA YANIT VE SESLENDİRME
 async function ritaYanitla(ctx, userId, mesaj) {
     try {
         let { data: kayit } = await supabase.from('hafiza').select('messages').eq('user_id', userId.toString()).maybeSingle();
         let history = (kayit && kayit.messages) ? kayit.messages : [];
         history.push({ role: "user", content: mesaj });
         
-        const models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"];
-        let chatCompletion;
-
-        for (const modelId of models) {
-            try {
-                chatCompletion = await groq.chat.completions.create({
-                    messages: [{ role: "system", content: systemPrompt }, ...history.slice(-5), { role: "user", content: mesaj }],
-                    model: modelId,
-                });
-                break;
-            } catch (err) {
-                if (modelId === models[models.length - 1]) throw err;
-            }
-        }
+        const chatCompletion = await groq.chat.completions.create({
+            messages: [{ role: "system", content: systemPrompt }, ...history.slice(-5), { role: "user", content: mesaj }],
+            model: "llama-3.3-70b-versatile",
+        });
 
         const cevap = chatCompletion.choices[0].message.content;
         history.push({ role: "assistant", content: cevap });
-
-        // KELİME AYIKLAMA VE HAFIZA (SUPABASE)
-        const kelimeMatch = cevap.match(/Kelime:\s*([a-zA-ZçÇğĞıİöÖşŞüÜ\s]+)/i);
-        const anlamMatch = cevap.match(/Anlamı:\s*([^.\n]+)/i);
-
-        if (kelimeMatch && anlamMatch) {
-            await supabase.from('rita_sozluk').insert({
-                user_id: userId.toString(),
-                word: kelimeMatch[1].trim(),
-                mean: anlamMatch[1].trim()
-            });
-        }
 
         await supabase.from('hafiza').upsert({ user_id: userId.toString(), messages: history }, { onConflict: 'user_id' });
 
         // Önce Yazılı Cevap
         await ctx.reply(cevap);
 
-         
         // --- İNSANSI SES OLUŞTURMA ---
         const sesDosyasiPath = path.join('/tmp', `rita_voice_${userId}.mp3`);
         try {
-            const tts = new EdgeTTS(); // Constructor hatasını yukarıdaki import düzeltecek
-            
-            // Metinden sesi oluştur
+            const tts = new EdgeTTS();
             await tts.ttsPromise(cevap, sesDosyasiPath, { voice: 'en-US-AvaNeural' });
             
-            // Telegram'a gönder
-            await ctx.replyWithVoice({ source: sesDosyasiPath });
+            // Stream kullanarak gönderim (Daha güvenli)
+            await ctx.replyWithVoice({ source: fs.createReadStream(sesDosyasiPath) });
             
-            // Dosyayı sil
             if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
         } catch (ttsErr) {
             console.error("❌ SES HATASI:", ttsErr.message);
-            // Eğer buraya düşerse terminalde hatayı net görürüz
         }
 
     } catch (error) {
@@ -135,9 +105,16 @@ bot.on('voice', async (ctx) => {
 
 bot.on('text', (ctx) => ritaYanitla(ctx, ctx.from.id, ctx.message.text));
 
-bot.launch({ dropPendingUpdates: true }).then(() => {
-    console.log("🚀 Rita (Robert'ın Koçu) Sesli ve Canlı!");
-});
+// ÇAKIŞMAYI ÖNLEYEN BAŞLATMA
+bot.launch({ dropPendingUpdates: true })
+    .then(() => console.log("🚀 Rita Yayında ve Conflict'ler temizlendi!"))
+    .catch((err) => {
+        if (err.description && err.description.includes('Conflict')) {
+            console.log("⚠️ Conflict algılandı, Render servisi bekleniyor...");
+        } else {
+            console.error("❌ Bot başlatılamadı:", err);
+        }
+    });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
