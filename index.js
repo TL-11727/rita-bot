@@ -96,17 +96,23 @@ async function ritaYanitla(ctx, userId, mesaj) {
         // Önce Yazılı Cevap
         await ctx.reply(cevap);
 
-        // --- İNSANSI SES OLUŞTURMA (EDGE-TTS-NODE) ---
-        const sesDosyasiPath = path.join(__dirname, `rita_voice_${userId}.mp3`);
+         
+        // --- İNSANSI SES OLUŞTURMA ---
+        const sesDosyasiPath = path.join('/tmp', `rita_voice_${userId}.mp3`);
         try {
-            const tts = new EdgeTTS();
-            // AvaNeural sesi çok gerçekçidir
+            const tts = new EdgeTTS(); // Constructor hatasını yukarıdaki import düzeltecek
+            
+            // Metinden sesi oluştur
             await tts.ttsPromise(cevap, sesDosyasiPath, { voice: 'en-US-AvaNeural' });
             
+            // Telegram'a gönder
             await ctx.replyWithVoice({ source: sesDosyasiPath });
+            
+            // Dosyayı sil
             if (fs.existsSync(sesDosyasiPath)) fs.unlinkSync(sesDosyasiPath);
         } catch (ttsErr) {
-            console.error("TTS Hatası:", ttsErr.message);
+            console.error("❌ SES HATASI:", ttsErr.message);
+            // Eğer buraya düşerse terminalde hatayı net görürüz
         }
 
     } catch (error) {
